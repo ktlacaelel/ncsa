@@ -1,0 +1,172 @@
+#!/usr/bin/env ruby
+# encoding: utf-8
+
+#!/usr/bin/env ruby -r profile
+
+require 'time'
+
+STRUCTURE = {
+  :benchmark => 0,
+  :ip        => 1,
+  :nothing   => 3,
+  :date      => 4,
+  :timezone  => 5,
+  :domain    => 6,
+  :method    => 7,
+  :path      => 8,
+  :protocol  => 9,
+  :status    => 10,
+  :size      => 11,
+  :rdomain   => 12,
+  :useragent => 13
+}
+
+HELP = {
+  '-v' => 'Be verbose and print actual request information',
+  '-p' => 'Dont print percentage, instead print count of requests',
+  '-H' => 'Breakdown to the hour',
+  '-M' => 'Breakdown to the minute',
+  '-S' => 'Breakdown to the second',
+  '-s' => 'Sort by number of requests',
+  '-h' => 'Print this help'
+}
+
+if ARGV.include? '-h'
+  HELP.each do |key, value|
+    puts "%4s %s" % [key, value]
+  end
+  exit 0
+end
+
+dump            = {}
+lines           = 0
+population      = []
+
+must_be_verbose  = ARGV.include? '-v'
+print_count      = ARGV.include? '-p'
+sort_by_requests = ARGV.include? '-s'
+print_hours      = ARGV.include? '-H'
+print_minutes    = ARGV.include? '-M'
+print_seconds    = ARGV.include? '-S'
+
+$running = true
+
+trap('INT') { $running = false }
+
+count = 0
+
+STDIN.each_line do |line|
+
+  break unless $running
+
+  data      = {}
+  chunks    = line.split(' ')
+
+  benchmark = chunks[STRUCTURE[:benchmark]]
+  date = chunks[STRUCTURE[:date]]
+  date.gsub!(/\[/, '')
+  day, month, year_and_time = date.split('/')
+  year, hour, minute, second = year_and_time.split(':')
+
+  count += 1
+
+  data[:iteration] = count
+
+  if must_be_verbose
+
+    # Nasty but faster!
+    date = Time.parse(
+      year.to_s + ' ' + month.to_s + ' ' + day.to_s + ' ' +
+      hour.to_s + ':' + minute.to_s + ':' + second.to_s
+    )
+
+    data[:timestamp] = date.tv_sec
+    data[:benchmark] = benchmark
+    data[:date]      = date
+    data[:timezone]  = chunks[STRUCTURE[:timezone]].gsub(/\D/, '')
+    data[:domain]    = chunks[STRUCTURE[:domain]].gsub(/"|\\/, '')
+    data[:method]    = chunks[STRUCTURE[:method]].gsub(/\W/, '')
+    data[:path]      = chunks[STRUCTURE[:path]]
+    data[:protocol]  = chunks[STRUCTURE[:protocol]].gsub(/\W/, '')
+    data[:status]    = chunks[STRUCTURE[:status]].to_i
+    data[:size]      = chunks[STRUCTURE[:size]].to_i
+    data[:rdomain]   = chunks[STRUCTURE[:rdomain]].gsub(/"|\\/, '')
+  end
+
+  if print_hours
+    # data[:key] = "#{year} #{hour}"
+    data[:key] = "#{year} #{month} #{day} #{hour}"
+  end
+
+  if print_minutes
+    data[:key] = "#{year} #{month} #{day} #{hour}:#{minute}"
+  end
+
+  if print_seconds
+    data[:key] = "#{year} #{month} #{day} #{hour}:#{minute}:#{second}"
+  end
+
+  unless data[:key]
+    data[:key] = "#{year} #{month} #{day}"
+  end
+
+  population.push(data)
+
+  dump[data[:key]] ||= {
+    :count => 0,
+    :data  => data
+  }
+
+  dump[data[:key]][:count] += 1
+
+  lines += 1
+
+end
+
+dump.sort do |a, b|
+  break unless $running
+  if sort_by_requests
+    a[1][:count] <=> b[1][:count]
+  else
+    a[1][:data][:iteration] <=> b[1][:data][:iteration]
+  end
+end.each do |result|
+
+  break unless $running
+  date_key   = result[0]
+  dump_hash  = result[1]
+  percentage = ((dump_hash[:count] * 100) / lines)
+
+  bindings = [
+    date_key,
+    dump_hash[:count],
+    percentage
+  ]
+
+  if print_count
+    bars = '|' * dump_hash[:count]
+    bars = '(#) - ' + bars
+  else
+    bars = '|' * percentage
+    bars = '(%) - ' + bars
+  end
+
+  bindings.push(bars)
+
+  puts("%20s %7s requests %7.2f %s" % bindings)
+
+  next unless must_be_verbose
+
+  total = 0
+
+  population.each do |hash|
+      if hash[:key] == date_key
+        puts "\t - #{hash[:benchmark]} #{hash[:status]} #{hash[:method]} #{hash[:path]}"
+        total += hash[:benchmark].to_f
+      end
+  end
+
+  puts "\t > total: #{total}"
+
+end
+
