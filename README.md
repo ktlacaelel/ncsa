@@ -85,7 +85,7 @@ utopia:ncsa kazu$ tail nginx.log | ncsa -S -s
 2014 Sep 23 22:11:09       3 requests   30.00 (%) - ||||||||||||||||||||||||||||||
 ```
 
-Grab just a frew requests and dump a breakdown per second and sort but print a bar (|) per request instead of showing a percentage breakdown!
+Grab just a frew requests and dump a breakdown per second and sort but print a bar ```|``` per request instead of showing a percentage breakdown!
 
 ```
 utopia:ncsa kazu$ tail nginx.log | ncsa -S -s -p
